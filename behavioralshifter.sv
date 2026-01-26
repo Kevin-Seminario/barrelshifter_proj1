@@ -2,7 +2,7 @@
 `default_nettype none
 
 // A behavioral description of a barrel shifter. Used as a reference
-module barrelshifter #(parameter D_SIZE) (
+module barrelshifter_ref #(parameter D_SIZE) (
   input  logic [D_SIZE-1:0]         x_in,
   input  logic [$clog2(D_SIZE)-1:0] s_in,
   input  logic [2:0]                op_in,
@@ -33,4 +33,4 @@ module barrelshifter #(parameter D_SIZE) (
     vf_out = (op_in == 3'b101) && |(shifted_out[D_SIZE-2:0] ^ {D_SIZE-1{msb}});
     zf_out = &(~y_out);
   end
-endmodule : barrelshifter
+endmodule : barrelshifter_ref
