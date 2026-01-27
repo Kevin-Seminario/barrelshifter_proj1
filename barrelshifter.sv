@@ -60,14 +60,14 @@ module barrelshifter #(parameter D_SIZE) (
           mux2 ulslmux (logic_shift_left_interim[D_SIZE * (i + 1) + j - 2 ** i], logic_shift_left_interim[D_SIZE * (i + 1) + j], s_in[i], logic_shift_left_interim[D_SIZE * i + j]);
           mux2 ulrmux (rot_left_interim[D_SIZE * (i + 1) + j - 2 ** i], rot_left_interim[D_SIZE * (i + 1) + j], s_in[i], rot_left_interim[D_SIZE * i + j]);
         end
-      end
-      assign arith_shift_left_interim[D_SIZE * (i + 1) - 1] = arith_shift_left_interim[D_SIZE * (i + 2) - 1];
-      for (k = 1; k < D_SIZE; k = k + 1) begin
-        if (k - 1 < 2 ** i) begin
-          mux2 farlmux (1'b0, arith_shift_left_interim[D_SIZE * (i + 1) + k - 1], s_in[i], arith_shift_left_interim[D_SIZE * i + k - 1]);
+        if (j == D_SIZE - 1) begin
+          assign arith_shift_left_interim[D_SIZE * (i + 1) - 1] = arith_shift_left_interim[D_SIZE * (i + 2) - 1];
+        end
+        else if (j < 2 ** i) begin
+          mux2 farlmux (1'b0, arith_shift_left_interim[D_SIZE * (i + 1) + j], s_in[i], arith_shift_left_interim[D_SIZE * i + j]);
         end
         else begin
-          mux2 uarlmux (arith_shift_left_interim[D_SIZE * (i + 1) + k - 1 - 2 ** i], arith_shift_left_interim[D_SIZE * (i + 1) + k - 1], s_in[i], arith_shift_left_interim[D_SIZE * i + k - 1]);
+          mux2 uarlmux (arith_shift_left_interim[D_SIZE * (i + 1) + j - 2 ** i], arith_shift_left_interim[D_SIZE * (i + 1) + j], s_in[i], arith_shift_left_interim[D_SIZE * i + j]);
         end
       end
       long_xor #(2 ** i + 1) vf_xors (logic_shift_left_interim[D_SIZE * (i + 2) - 1:D_SIZE * (i + 2) - 2 ** i - 1], vf_asl_interim[i]);
