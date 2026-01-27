@@ -38,7 +38,7 @@ module barrelshifter #(parameter D_SIZE) (
   long_or #($clog2(D_SIZE)) vf_asl_mux_and_all (vf_asl_mux_interim[$clog2(D_SIZE)-1:0], same_bit_flag);
   mux2 vf_zero_mux (1'b0, same_bit_flag, zr_flag_sin, overflow_flag);
   
-  genvar i, j;
+  genvar i, j, k;
   generate
     for (i = 0; i < $clog2(D_SIZE); i = i + 1) begin
       for (j = 0; j < D_SIZE; j = j + 1) begin
@@ -60,14 +60,14 @@ module barrelshifter #(parameter D_SIZE) (
           mux2 ulslmux (logic_shift_left_interim[D_SIZE * (i + 1) + j - 2 ** i], logic_shift_left_interim[D_SIZE * (i + 1) + j], s_in[i], logic_shift_left_interim[D_SIZE * i + j]);
           mux2 ulrmux (rot_left_interim[D_SIZE * (i + 1) + j - 2 ** i], rot_left_interim[D_SIZE * (i + 1) + j], s_in[i], rot_left_interim[D_SIZE * i + j]);
         end
-        if (j == D_SIZE - 1) begin
-          assign arith_shift_left_interim[D_SIZE * (i + 1) - 1] = arith_shift_left_interim[D_SIZE * (i + 2) - 1];
-        end
-        else if (j < 2 ** i) begin
-          mux2 farlmux (1'b0, arith_shift_left_interim[D_SIZE * (i + 1) + j], s_in[i], arith_shift_left_interim[D_SIZE * i + j]);
+      end
+      assign arith_shift_left_interim[D_SIZE * (i + 1) - 1] = arith_shift_left_interim[D_SIZE * (i + 2) - 1];
+      for (k = 1; k < D_SIZE; k = k + 1) begin
+        if (k - 1 < 2 ** i) begin
+          mux2 farlmux (1'b0, arith_shift_left_interim[D_SIZE * (i + 1) + k - 1], s_in[i], arith_shift_left_interim[D_SIZE * i + k - 1]);
         end
         else begin
-          mux2 uarlmux (arith_shift_left_interim[D_SIZE * (i + 1) + j - 2 ** i], arith_shift_left_interim[D_SIZE * (i + 1) + j], s_in[i], arith_shift_left_interim[D_SIZE * i + j]);
+          mux2 uarlmux (arith_shift_left_interim[D_SIZE * (i + 1) + k - 1 - 2 ** i], arith_shift_left_interim[D_SIZE * (i + 1) + k - 1], s_in[i], arith_shift_left_interim[D_SIZE * i + k - 1]);
         end
       end
       long_xor #(2 ** i + 1) vf_xors (logic_shift_left_interim[D_SIZE * (i + 2) - 1:D_SIZE * (i + 2) - 2 ** i - 1], vf_asl_interim[i]);
@@ -76,38 +76,24 @@ module barrelshifter #(parameter D_SIZE) (
     
   endgenerate
 
-  // Set the VG iff shift left airthmetic or >=1 shifted-out bits (X_(N-2) through X_(N-s-1))
-  // differ from the sign bit (X_(N-1)).
-  // The zero flag ZF is set iff Y is the zero vector
+  logic [D_SIZE-1:0] final_y_out;
+  logic [D_SIZE-1:0] lrs_ars_mux_out, rs_rr_mux_out, lsl_asl_mux_out, ls_rl_mux_out;
+  long_mux2 #(D_SIZE) lrs_ars_mux (arith_shift_right_interim[D_SIZE-1:0], logic_shift_right_interim[D_SIZE-1:0], op_in[0], lrs_ars_mux_out[D_SIZE-1:0]);
+  long_mux2 #(D_SIZE) lsl_asl_mux (arith_shift_left_interim[D_SIZE-1:0], logic_shift_left_interim[D_SIZE-1:0], op_in[0], lsl_asl_mux_out[D_SIZE-1:0]);
+  long_mux2 #(D_SIZE) rs_rr_mux (rot_right_interim[D_SIZE-1:0], lrs_ars_mux_out[D_SIZE-1:0], op_in[1], rs_rr_mux_out[D_SIZE-1:0]);
+  long_mux2 #(D_SIZE) ls_rl_mux (rot_left_interim[D_SIZE-1:0], lsl_asl_mux_out[D_SIZE-1:0], op_in[1], ls_rl_mux_out[D_SIZE-1:0]);
+  long_mux2 #(D_SIZE) final_y_mux (ls_rl_mux_out[D_SIZE-1:0], rs_rr_mux_out[D_SIZE-1:0], op_in[2], final_y_out[D_SIZE-1:0]);
+
+
+  logic vf_out_trigger, vf_out_final;
+  equalizer #(2'b11) op_vf_long (op_in, 3'b101, vf_out_trigger);
+  mux2 vf_check (overflow_flag, 1'b0, vf_out_trigger, vf_out_final);
+  
   always_comb begin
-    casez (op_in)
-      3'b000: begin
-        vf_out = 1'b0;
-        y_out[D_SIZE-1:0] = logic_shift_right_interim[D_SIZE-1:0];
-      end
-      3'b001: begin
-        vf_out = 1'b0;
-        y_out[D_SIZE-1:0] = arith_shift_right_interim[D_SIZE-1:0];
-      end
-      3'b01z: begin
-        vf_out = 1'b0;
-        y_out[D_SIZE-1:0] = rot_right_interim[D_SIZE-1:0];
-      end
-      3'b100: begin
-        vf_out = 1'b0;
-        y_out[D_SIZE-1:0] = logic_shift_left_interim[D_SIZE-1:0];
-      end
-      3'b101: begin
-        vf_out = overflow_flag;
-        y_out[D_SIZE-1:0] = arith_shift_left_interim[D_SIZE-1:0];
-      end
-      3'b11z: begin
-        vf_out = 1'b0;
-        y_out[D_SIZE-1:0] = rot_left_interim[D_SIZE-1:0];
-      end
-    endcase
+    vf_out = vf_out_final;
+    y_out = final_y_out;
   end
-endmodule
+endmodule: barrelshifter
 
 module mux2 (
 	input logic		a_in,
@@ -121,6 +107,20 @@ module mux2 (
 	and (temp2, b_in, bar_sel_in);
 	or (out, temp1, temp2);
 endmodule: mux2
+
+module long_mux2 #(parameter V_SIZE) (
+  input logic [V_SIZE-1:0]    av_in,
+  input logic [V_SIZE-1:0]    bv_in,
+  input logic                 sel_in,
+  output logic [V_SIZE-1:0]   outv
+);
+  genvar i;
+  generate
+    for (i = 0; i < V_SIZE; i = i + 1) begin
+      mux2 temp_mux (av_in[i], bv_in[i], sel_in, outv[i]);
+    end
+  endgenerate
+endmodule: long_mux2
 
 module long_xor #(parameter V_SIZE) (
   input logic [V_SIZE-1:0]		in,
@@ -138,7 +138,7 @@ module long_xor #(parameter V_SIZE) (
       or (or_interim[i], or_interim[i - 1], xor_interim[i - 1]);
     end
   endgenerate
-endmodule
+endmodule: long_xor
 
 module long_nor #(parameter V_SIZE) (
   input logic [V_SIZE-1:0]		in,
@@ -157,20 +157,40 @@ module long_nor #(parameter V_SIZE) (
       and (and_interim[i], and_interim[i - 1], nor_interim[i]);
     end
   endgenerate
-endmodule
+endmodule: long_nor
 
 module long_or #(parameter V_SIZE) (
   input logic [V_SIZE-1:0]		in,
   output logic					out
 );
+  logic [V_SIZE-1:0] or_interim;
+  assign or_interim[0] = in[0];
+  assign out = or_interim[V_SIZE-1];
+  
+  genvar i;
+  generate
+    for (i = 1; i < V_SIZE; i = i + 1) begin
+      or (or_interim[i], or_interim[i - 1], in[i]);
+    end
+  endgenerate
+endmodule: long_or
+
+module equalizer #(parameter V_SIZE) (
+  input logic [V_SIZE-1:0]		in_0,
+  input logic [V_SIZE-1:0]    in_1,
+  output logic					      out
+);
+  logic [V_SIZE-1:0] xnor_interim;
   logic [V_SIZE-1:0] and_interim;
-  assign and_interim[0] = in[0];
+  xnor (xnor_interim[0], in_0[0], in_1[0]);
+  assign and_interim[0] = xnor_interim[0];
   assign out = and_interim[V_SIZE-1];
   
   genvar i;
   generate
     for (i = 1; i < V_SIZE; i = i + 1) begin
-      or (and_interim[i], and_interim[i - 1], in[i]);
+      xnor (xnor_interim[i], in_0[i], in_1[i]);
+      and (and_interim[i], xnor_interim[i], and_interim[i - 1]);
     end
   endgenerate
-endmodule
+endmodule: equalizer
